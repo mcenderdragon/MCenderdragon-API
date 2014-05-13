@@ -1,0 +1,363 @@
+package dragon.plugin;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+public class PluginManager 
+{
+	public boolean juseLinks=false;
+	private HashMap<String, Object> plugins = new HashMap<String, Object>();
+	public String aktuellPlauginID;
+	
+	public void load(File f)
+	{
+		try
+		{
+			f.mkdir();
+			if(!f.isDirectory())
+			{
+				throw new RuntimeException("File is not a Directory");
+			}
+			System.out.println("+++\tStart loading classes from " + f.getAbsolutePath());
+			File[] files = f.listFiles();		
+			
+			List<String> s = new ArrayList<String>();
+			List<URL> url = new ArrayList<URL>();
+			
+			loadfromDir(f,s,url,f);
+			System.out.println("+++\tClasses Found");
+			List<Class<?>> l = loadClass(s.toArray(new String[s.size()]),url.toArray(new URL[url.size()]));
+			
+			
+			System.out.println("+++\tStart Invoking");
+			invokeClasses(l);
+			/*for(int i=0;i<l.size();i++)
+			{
+				try
+				{
+					Class<?> c = l.get(i);
+					invoke(c);
+				}
+				catch(Throwable e)
+				{
+					System.err.println("Cant invoke "+l.get(i));
+				}
+			}*/
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+	}
+	
+	private void loadfromDir(File f, List<String> s, List<URL> url,File start) throws Exception 
+	{
+		System.out.println("Dir Found.\t"+f);
+		File[] files = f.listFiles();
+		if(files !=null)
+		{
+			for(int i=0;i<files.length;i++)
+			{
+				File zip = files[i];
+				loadFromFile(zip, s, url, start);
+			}	
+		}
+	}
+	
+	private void loadFromFile(File zip,List<String> s, List<URL> url, File start) throws Exception
+	{
+		if(zip!=null)
+		{
+			if(zip.isFile() && zip.getName().endsWith(".class"))
+			{
+				String path = zip.getAbsolutePath().replace('\\', '.').replaceAll(start.getAbsolutePath().replace('\\', '.'), "");
+				path.replaceFirst(".class", "");
+				
+				s.add(path.substring(1));
+				url.add(zip.toURI().toURL());
+			}
+			else if(zip.isFile() && (zip.getName().endsWith(".zip") || zip.getName().endsWith(".jar")))
+			{
+				s.addAll(loadfromZip(zip));
+				url.add(zip.toURI().toURL());
+			}
+			else if(zip.isFile() && juseLinks && zip.getName().endsWith(".lnk"))
+			{
+				File link = getLinkTarget(zip);
+				loadFromFile(link, s, url, start);
+			}
+			else if(zip.isDirectory())
+			{
+				loadfromDir(zip,s,url,start);
+			}
+		}
+	}
+
+	private List<String> loadfromZip(File f) throws Exception
+	{		
+		System.out.println("Zip Found.\t"+f);
+		ZipInputStream zip = new ZipInputStream(new FileInputStream(f));
+				
+		List<String> l = new ArrayList<String>();
+		
+		
+		while(true)
+		{
+			ZipEntry entry = zip.getNextEntry();
+			if(entry==null)
+			{
+				break;
+			}
+			String name = entry.getName();
+			String s = name.split("/")[name.split("/").length-1];
+			
+			if(!entry.isDirectory()&& s!=null)
+			{	
+				if(s.endsWith(".class"))
+				{
+					l.add(name.replace('/', '.'));
+				}
+			}
+			
+		}
+		zip.close();
+		return l;
+	}
+	
+	private List<Class<?>> loadClass(String[] par1,URL[] url) throws IOException
+	{
+		URLClassLoader load = new URLClassLoader(url);
+		List<Class<?>> l = new ArrayList<Class<?>>();
+		List<String> failed = new ArrayList<String>();
+		for(int i=0;i<par1.length;i++)
+		{
+			String s = par1[i];
+			if(s.contains("$"))
+			{	
+				continue;
+			}
+			if(s.endsWith(".class"))
+			{
+				s=s.replace(".class", "");
+			}
+			Class<?> c;
+			try 
+			{
+				c = load.loadClass(s);
+				l.add(c);
+				System.out.println(c);
+			}
+			catch (Throwable e) 
+			{
+				System.err.println("Cant load " + s);
+				failed.add(s);
+			}
+		}	
+		load.close();
+		if(failed.size()>0)
+		{
+			System.out.println("##########################");
+			System.out.println("###### Second Try ########");
+			System.out.println("##########################");
+			for(String s : failed)
+			{
+				if(s.contains("$"))
+				{	
+					continue;
+				}
+				if(s.endsWith(".class"))
+				{
+					s=s.replace(".class", "");
+				}
+				Class<?> c;
+				try 
+				{
+					c = load.loadClass(s);
+					l.add(c);
+					System.out.println(c);
+				}
+				catch (Throwable e) 
+				{
+					System.err.println("Cant load " + s);
+				}
+			}
+		}
+		return l;
+	}
+	
+	private static void invoke(Class<?> c) throws Exception
+	{
+		if(c.isAnnotationPresent(Init.Plugin.class))
+		{
+			//Method[] m = c.getMethods();
+			System.out.println("-->\t" + c.getResource(c.getSimpleName()+ ".class"));	
+			Object o=null;
+			
+			for(Field f : c.getFields())
+			{
+				if(f.getType()==c && f.isAnnotationPresent(Init.Instance.class))
+				{
+					if(o==null)
+						o = c.newInstance();
+					f.set(o, o);
+				}
+			}
+	
+			for(Method m : c.getMethods())
+			{			
+				if(m.isAnnotationPresent(Init.Start.class))
+				{
+					if(o==null)
+						o = c.newInstance();
+					m.invoke(o);
+				}//C:\Users\Max\AppData\Roaming\.minecraft\libraries
+			}
+		}
+	}
+	
+	private void invokeClasses(List<Class<?>> l)
+	{
+		HashMap<String, HashMap<Field,String>> fields = new HashMap<String, HashMap<Field,String>>();
+		List<Class<?>> classes = new ArrayList<Class<?>>();
+		
+		for(int i=0;i<l.size();i++)
+		{
+			try
+			{
+				Class<?> c = l.get(i);
+				if(c.isAnnotationPresent(Init.Plugin.class))
+				{			
+					System.out.println("-->\t" + c.getResource(c.getSimpleName()+ ".class"));	
+					Object o = c.newInstance();
+					classes.add(c);
+					Init.Plugin plug = c.getAnnotation(Init.Plugin.class);
+					this.plugins.put(plug.pluginID(), o);
+					System.out.println("Plugin: " + plug.pluginID());
+					
+					for(Field f : c.getFields())
+					{
+						if(f.isAnnotationPresent(Init.Instance.class))
+						{
+							System.out.println("Field: " + f);
+							String s = f.getAnnotation(Init.Instance.class).value();
+							String s2 = s.length()>0?s:plug.pluginID();
+							System.out.println("value: " + s2);
+							if(!fields.containsKey(s2))
+							{
+								fields.put(s2, new HashMap<Field,String>());
+							}
+							HashMap<Field,String> list = fields.get(s2);
+							list.put(f,plug.pluginID());
+							fields.put(s2, list);
+						}
+					}
+				}
+			}
+			catch(Throwable e)
+			{
+				System.err.println("Cant invoke "+l.get(i) + " cause " + e.getMessage());
+			}
+		}
+		for(String s : fields.keySet())
+		{
+			try
+			{
+				System.out.print("KEY: "+ s);
+				HashMap<Field,String> list = fields.get(s);
+				System.out.println(" " + list.size());
+				Object plugin = plugins.get(s);
+				if(plugin==null)
+				{
+					System.err.println("##### Cant find plugin ID \""+ s + "\" #####");
+					continue;
+				}
+				for(Field f : list.keySet())
+				{
+					Object container = plugins.get(list.get(f));
+					System.out.println("Container: "+container);
+					System.out.println("Plugin: "+ plugin);
+					f.set(container, plugin);
+				}
+			}
+			catch(Throwable e)
+			{
+				System.err.println("Cant set Plugin "+s + " cause " + e.getMessage());
+			}		
+		}
+		
+		for(int i=0;i<classes.size();i++)
+		{
+			try
+			{
+				Class<?> c = classes.get(i);
+				if(c.isAnnotationPresent(Init.Plugin.class))
+				{			
+					Init.Plugin plug = c.getAnnotation(Init.Plugin.class);
+					System.out.println("-->\tInvoke: " + plug.pluginID());
+					aktuellPlauginID = plug.pluginID();
+					Object o = plugins.get(plug.pluginID());
+					
+					for(Method m : c.getMethods())
+					{			
+						if(m.isAnnotationPresent(Init.Start.class))
+						{						
+							m.invoke(o);
+						}
+					}
+				}
+			}
+			catch(Throwable e)
+			{
+				System.err.println("Cant invoke "+l.get(i) + " cause " + e.getMessage());
+			}
+		
+		}
+		aktuellPlauginID = null;
+	}
+	
+	public static void main(String[] args) throws Exception 
+	{
+		File f = new File("run").getAbsoluteFile();
+		PluginManager m = new PluginManager();
+		m.juseLinks=true;
+		m.load(f);
+		
+	}
+	
+	public static File getLinkTarget(File f)
+	{
+		try
+		{
+		if(f.isFile())
+		{
+			FileInputStream in = new FileInputStream(f);
+			String s = "";
+			while(in.available()>0)
+			{
+				s += (char)in.read();
+			}
+			int i1 = s.indexOf("System");
+			String s1 = s.substring(i1);
+			String s2 = s1.substring(s1.indexOf(0)+1);
+			String s3 = s2 .substring(0, s2.indexOf(0));
+			return new File(s3);
+		}
+		}catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
+}

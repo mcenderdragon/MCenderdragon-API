@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<qualifiedTypeNameHistroy>
+<fullyQualifiedTypeName name="dragon.plugin.Init.Start"/>
+<fullyQualifiedTypeName name="java.util.Date"/>
+<fullyQualifiedTypeName name="java.io.FileInputStream"/>
+<fullyQualifiedTypeName name="java.io.IOException"/>
+<fullyQualifiedTypeName name="java.lang.Throwable"/>
+<fullyQualifiedTypeName name="java.util.Arrays"/>
+<fullyQualifiedTypeName name="org.lwjgl.examples.spaceinvaders.TextureLoader"/>
+<fullyQualifiedTypeName name="java.util.HashMap"/>
+<fullyQualifiedTypeName name="dragon.plugin.Init"/>
+<fullyQualifiedTypeName name="java.lang.Class"/>
+<fullyQualifiedTypeName name="java.lang.reflect.Field"/>
+<fullyQualifiedTypeName name="dragon.plugin.Init.Plugin"/>
+<fullyQualifiedTypeName name="mod.BLABLA"/>
+<fullyQualifiedTypeName name="mod.MainTest"/>
+<fullyQualifiedTypeName name="dragon.plugin.Init.Instance"/>
+</qualifiedTypeNameHistroy>
